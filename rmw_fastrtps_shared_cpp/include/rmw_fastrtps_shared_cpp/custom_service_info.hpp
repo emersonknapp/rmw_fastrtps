@@ -27,6 +27,7 @@
 #include "fastrtps/subscriber/SubscriberListener.h"
 #include "fastrtps/subscriber/SampleInfo.h"
 
+#include "rmw_fastrtps_shared_cpp/thread_safety_annotations.hpp"
 #include "rmw_fastrtps_shared_cpp/TypeSupport.hpp"
 
 class ServiceListener;
@@ -63,7 +64,7 @@ public:
 
 
   void
-  onNewDataMessage(eprosima::fastrtps::Subscriber * sub)
+  onNewDataMessage(eprosima::fastrtps::Subscriber * sub) R2_REQUIRES(!internalMutex_)
   {
     assert(sub);
 
@@ -98,7 +99,7 @@ public:
   }
 
   CustomServiceRequest
-  getRequest()
+  getRequest() R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     CustomServiceRequest request;
@@ -123,6 +124,7 @@ public:
 
   void
   attachCondition(std::mutex * conditionMutex, std::condition_variable * conditionVariable)
+  R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     conditionMutex_ = conditionMutex;
@@ -130,7 +132,7 @@ public:
   }
 
   void
-  detachCondition()
+  detachCondition() R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     conditionMutex_ = nullptr;

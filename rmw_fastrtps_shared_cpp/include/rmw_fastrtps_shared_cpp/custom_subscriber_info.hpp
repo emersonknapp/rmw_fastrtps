@@ -24,6 +24,7 @@
 #include "fastrtps/subscriber/Subscriber.h"
 #include "fastrtps/subscriber/SubscriberListener.h"
 
+#include "rmw_fastrtps_shared_cpp/thread_safety_annotations.hpp"
 #include "rmw_fastrtps_shared_cpp/TypeSupport.hpp"
 
 class SubListener;
@@ -50,6 +51,7 @@ public:
   void
   onSubscriptionMatched(
     eprosima::fastrtps::Subscriber * sub, eprosima::fastrtps::rtps::MatchingInfo & info)
+  R2_REQUIRES(!internalMutex_)
   {
     (void)sub;
 
@@ -62,7 +64,7 @@ public:
   }
 
   void
-  onNewDataMessage(eprosima::fastrtps::Subscriber * sub)
+  onNewDataMessage(eprosima::fastrtps::Subscriber * sub) R2_REQUIRES(!internalMutex_)
   {
     (void)sub;
     std::lock_guard<std::mutex> lock(internalMutex_);
@@ -81,6 +83,7 @@ public:
 
   void
   attachCondition(std::mutex * conditionMutex, std::condition_variable * conditionVariable)
+  R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     conditionMutex_ = conditionMutex;
@@ -88,7 +91,7 @@ public:
   }
 
   void
-  detachCondition()
+  detachCondition() R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     conditionMutex_ = nullptr;
@@ -102,7 +105,7 @@ public:
   }
 
   void
-  data_taken()
+  data_taken() R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
 
@@ -114,7 +117,7 @@ public:
     }
   }
 
-  size_t publisherCount()
+  size_t publisherCount() R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     return publishers_.size();

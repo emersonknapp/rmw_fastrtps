@@ -23,6 +23,7 @@
 
 #include "rmw/rmw.h"
 
+#include "rmw_fastrtps_shared_cpp/thread_safety_annotations.hpp"
 #include "rmw_fastrtps_shared_cpp/TypeSupport.hpp"
 
 class PubListener;
@@ -47,6 +48,7 @@ public:
   void
   onPublicationMatched(
     eprosima::fastrtps::Publisher * pub, eprosima::fastrtps::rtps::MatchingInfo & info)
+  R2_REQUIRES(!internalMutex_)
   {
     (void) pub;
     std::lock_guard<std::mutex> lock(internalMutex_);
@@ -57,7 +59,7 @@ public:
     }
   }
 
-  size_t subscriptionCount()
+  size_t subscriptionCount() R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     return subscriptions_.size();

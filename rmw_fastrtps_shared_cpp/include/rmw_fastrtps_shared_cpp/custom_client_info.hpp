@@ -29,6 +29,7 @@
 #include "fastrtps/publisher/Publisher.h"
 #include "fastrtps/publisher/PublisherListener.h"
 
+#include "rmw_fastrtps_shared_cpp/thread_safety_annotations.hpp"
 #include "rmw_fastrtps_shared_cpp/TypeSupport.hpp"
 
 class ClientListener;
@@ -64,7 +65,7 @@ public:
 
 
   void
-  onNewDataMessage(eprosima::fastrtps::Subscriber * sub)
+  onNewDataMessage(eprosima::fastrtps::Subscriber * sub) R2_REQUIRES(!internalMutex_)
   {
     assert(sub);
 
@@ -102,7 +103,7 @@ public:
   }
 
   bool
-  getResponse(CustomClientResponse & response)
+  getResponse(CustomClientResponse & response) R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
 
@@ -126,6 +127,7 @@ public:
 
   void
   attachCondition(std::mutex * conditionMutex, std::condition_variable * conditionVariable)
+  R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     conditionMutex_ = conditionMutex;
@@ -133,7 +135,7 @@ public:
   }
 
   void
-  detachCondition()
+  detachCondition() R2_REQUIRES(!internalMutex_)
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
     conditionMutex_ = nullptr;

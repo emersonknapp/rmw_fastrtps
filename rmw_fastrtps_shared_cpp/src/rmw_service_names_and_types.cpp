@@ -68,9 +68,8 @@ __rmw_get_service_names_and_types(
   std::map<std::string, std::set<std::string>> services;
 
   // Setup processing function, will be used with two maps
-  auto map_process = [&services](const LockedObject<TopicCache> & topic_cache) {
-      std::lock_guard<std::mutex> guard(topic_cache.getMutex());
-      for (auto it : topic_cache.getTopicToTypes()) {
+  auto map_process = [&services](const TopicCache & topic_cache) {
+      for (auto it : topic_cache.cloneTopicToTypes()) {
         std::string service_name = _demangle_service_from_topic(it.first);
         if (service_name.empty()) {
           // not a service

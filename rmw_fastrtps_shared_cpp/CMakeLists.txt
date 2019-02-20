@@ -16,13 +16,20 @@ cmake_minimum_required(VERSION 3.5)
 
 project(rmw_fastrtps_shared_cpp)
 
-# Default to C++14
-if(NOT CMAKE_CXX_STANDARD)
+# Default to C++14 (but skip on Clang because CMAKE_CXX_STANDARD adds -std=gnu++XX)
+if(NOT CMAKE_CXX_STANDARD AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   set(CMAKE_CXX_STANDARD 14)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# Enable thread safety annotations and analysis when using clang
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -std=c++14")
+  add_definitions(-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS)
+  add_compile_options(-Wthread-safety -Wthread-safety-negative)
 endif()
 
 if(SECURITY)
