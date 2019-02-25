@@ -25,6 +25,13 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Enable thread safety annotations and analysis when using clang
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -std=c++14")
+  add_definitions(-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS)
+  add_compile_options(-Wthread-safety)
+endif()
+
 if(SECURITY)
   find_package(OpenSSL REQUIRED)
 endif()
@@ -32,6 +39,7 @@ endif()
 find_package(ament_cmake_ros REQUIRED)
 
 find_package(rcutils REQUIRED)
+find_package(rcpputils REQUIRED)
 
 find_package(fastrtps_cmake_module REQUIRED)
 find_package(fastcdr REQUIRED CONFIG)
@@ -77,6 +85,7 @@ target_link_libraries(rmw_fastrtps_shared_cpp
 # specific order: dependents before dependencies
 ament_target_dependencies(rmw_fastrtps_shared_cpp
   "rcutils"
+  "rcpputils"
   "rmw"
 )
 
@@ -90,6 +99,7 @@ ament_export_include_directories(include)
 ament_export_libraries(rmw_fastrtps_shared_cpp)
 
 ament_export_dependencies(rcutils)
+ament_export_dependencies(rcpputils)
 ament_export_dependencies(rmw)
 
 if(BUILD_TESTING)

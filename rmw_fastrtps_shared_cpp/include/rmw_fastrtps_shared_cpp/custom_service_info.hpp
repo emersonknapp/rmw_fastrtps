@@ -29,6 +29,8 @@
 #include "fastrtps/subscriber/SubscriberListener.h"
 #include "fastrtps/subscriber/SampleInfo.h"
 
+#include "rcpputils/thread_safety_annotations.h"
+
 #include "rmw_fastrtps_shared_cpp/TypeSupport.hpp"
 
 class ServiceListener;
@@ -84,7 +86,7 @@ public:
 
         if (conditionMutex_ != nullptr) {
           std::unique_lock<std::mutex> clock(*conditionMutex_);
-          list.push_back(request);
+          list_.push_back(request);
           // the change to list_has_data_ needs to be mutually exclusive with
           // rmw_wait() which checks hasData() and decides if wait() needs to
           // be called
@@ -92,7 +94,7 @@ public:
           clock.unlock();
           conditionVariable_->notify_one();
         } else {
-          list.push_back(request);
+          list_.push_back(request);
           list_has_data_.store(true);
         }
       }
@@ -107,16 +109,16 @@ public:
 
     if (conditionMutex_ != nullptr) {
       std::unique_lock<std::mutex> clock(*conditionMutex_);
-      if (!list.empty()) {
-        request = list.front();
-        list.pop_front();
-        list_has_data_.store(!list.empty());
+      if (!list_.empty()) {
+        request = list_.front();
+        list_.pop_front();
+        list_has_data_.store(!list_.empty());
       }
     } else {
-      if (!list.empty()) {
-        request = list.front();
-        list.pop_front();
-        list_has_data_.store(!list.empty());
+      if (!list_.empty()) {
+        request = list_.front();
+        list_.pop_front();
+        list_has_data_.store(!list_.empty());
       }
     }
 
@@ -148,10 +150,10 @@ public:
 private:
   CustomServiceInfo * info_;
   std::mutex internalMutex_;
-  std::list<CustomServiceRequest> list;
+  std::list<CustomServiceRequest> list_ RCPPUTILS_GUARDED_BY(internalMutex_);
   std::atomic_bool list_has_data_;
-  std::mutex * conditionMutex_;
-  std::condition_variable * conditionVariable_;
+  std::mutex * conditionMutex_ RCPPUTILS_GUARDED_BY(internalMutex_);
+  std::condition_variable * conditionVariable_ RCPPUTILS_GUARDED_BY(internalMutex_);
 };
 
 #endif  // RMW_FASTRTPS_SHARED_CPP__CUSTOM_SERVICE_INFO_HPP_

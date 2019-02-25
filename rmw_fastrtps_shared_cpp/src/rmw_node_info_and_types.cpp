@@ -149,20 +149,20 @@ rmw_ret_t __validate_input(
  */
 void
 __accumulate_topics(
-  const LockedObject<TopicCache> & topic_cache,
+  const TopicCache & topic_cache,
   std::map<std::string, std::set<std::string>> & topics,
   const GUID_t & node_guid_,
   bool no_demangle)
 {
-  std::lock_guard<std::mutex> guard(topic_cache.getMutex());
-  const auto & node_topics = topic_cache.getParticipantToTopics().find(node_guid_);
-  if (node_topics == topic_cache.getParticipantToTopics().end()) {
+  NameToNamesMap node_topics;
+  bool found_node = topic_cache.cloneParticipantTopics(node_guid_, &node_topics);
+  if (!found_node) {
     RCUTILS_LOG_DEBUG_NAMED(
       kLoggerTag,
       "No topics found for node");
     return;
   }
-  for (auto & topic_pair : node_topics->second) {
+  for (auto & topic_pair : node_topics) {
     if (!no_demangle && _get_ros_prefix_if_exists(topic_pair.first) != ros_topic_prefix) {
       // if we are demangling and this is not prefixed with rt/, skip it
       continue;
@@ -265,19 +265,15 @@ __log_debug_information(const CustomParticipantInfo & impl)
 {
   if (rcutils_logging_logger_is_enabled_for(kLoggerTag, RCUTILS_LOG_SEVERITY_DEBUG)) {
     {
-      auto & topic_cache = impl.listener->writer_topic_cache;
-      std::lock_guard<std::mutex> guard(topic_cache.getMutex());
       std::stringstream map_ss;
-      map_ss << topic_cache;
+      map_ss << impl.listener->writer_topic_cache;
       RCUTILS_LOG_DEBUG_NAMED(
         kLoggerTag,
         "Publisher Topic cache is: %s", map_ss.str().c_str());
     }
     {
-      auto & topic_cache = impl.listener->reader_topic_cache;
-      std::lock_guard<std::mutex> guard(topic_cache.getMutex());
       std::stringstream map_ss;
-      map_ss << topic_cache;
+      map_ss << impl.listener->reader_topic_cache;
       RCUTILS_LOG_DEBUG_NAMED(
         kLoggerTag,
         "Subscriber Topic cache is: %s", map_ss.str().c_str());
@@ -302,8 +298,7 @@ __log_debug_information(const CustomParticipantInfo & impl)
 /**
  * Function to abstract which topic_cache to use when gathering information.
  */
-typedef std::function<const LockedObject<TopicCache>&(CustomParticipantInfo & participant_info)>
-  RetrieveCache;
+typedef std::function<const TopicCache & (CustomParticipantInfo & participant_info)> RetrieveCache;
 
 /**
  * Get topic names and types for the specific node_name and node_namespace requested.
@@ -360,7 +355,7 @@ __rmw_get_subscriber_names_and_types_by_node(
   rmw_names_and_types_t * topic_names_and_types)
 {
   RetrieveCache retrieve_sub_cache =
-    [](CustomParticipantInfo & participant_info) -> const LockedObject<TopicCache> & {
+    [](CustomParticipantInfo & participant_info) -> const TopicCache & {
       return participant_info.listener->reader_topic_cache;
     };
   return __rmw_get_topic_names_and_types_by_node(identifier, node, allocator, node_name,
@@ -378,7 +373,7 @@ __rmw_get_publisher_names_and_types_by_node(
   rmw_names_and_types_t * topic_names_and_types)
 {
   RetrieveCache retrieve_pub_cache =
-    [](CustomParticipantInfo & participant_info) -> const LockedObject<TopicCache> & {
+    [](CustomParticipantInfo & participant_info) -> const TopicCache & {
       return participant_info.listener->writer_topic_cache;
     };
   return __rmw_get_topic_names_and_types_by_node(identifier, node, allocator, node_name,
@@ -410,11 +405,10 @@ __rmw_get_service_names_and_types_by_node(
 
   std::map<std::string, std::set<std::string>> services;
   {
-    auto & topic_cache = impl->listener->reader_topic_cache;
-    std::lock_guard<std::mutex> guard(topic_cache.getMutex());
-    const auto & node_topics = topic_cache.getParticipantToTopics().find(guid);
-    if (node_topics != topic_cache.getParticipantToTopics().end()) {
-      for (auto & topic_pair : node_topics->second) {
+    NameToNamesMap node_topics;
+    bool found_node = impl->listener->reader_topic_cache.cloneParticipantTopics(guid, &node_topics);
+    if (found_node) {
+      for (auto & topic_pair : node_topics) {
         std::string service_name = _demangle_service_from_topic(topic_pair.first);
         if (service_name.empty()) {
           // not a service

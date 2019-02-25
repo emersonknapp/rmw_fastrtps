@@ -31,6 +31,8 @@
 #include "fastrtps/publisher/Publisher.h"
 #include "fastrtps/publisher/PublisherListener.h"
 
+#include "rcpputils/thread_safety_annotations.h"
+
 #include "rmw_fastrtps_shared_cpp/TypeSupport.hpp"
 
 class ClientListener;
@@ -87,7 +89,7 @@ public:
 
           if (conditionMutex_ != nullptr) {
             std::unique_lock<std::mutex> clock(*conditionMutex_);
-            list.emplace_back(std::move(response));
+            list_.emplace_back(std::move(response));
             // the change to list_has_data_ needs to be mutually exclusive with
             // rmw_wait() which checks hasData() and decides if wait() needs to
             // be called
@@ -95,7 +97,7 @@ public:
             clock.unlock();
             conditionVariable_->notify_one();
           } else {
-            list.emplace_back(std::move(response));
+            list_.emplace_back(std::move(response));
             list_has_data_.store(true);
           }
         }
@@ -108,22 +110,11 @@ public:
   {
     std::lock_guard<std::mutex> lock(internalMutex_);
 
-    auto pop_response = [this](CustomClientResponse & response) -> bool
-      {
-        if (!list.empty()) {
-          response = std::move(list.front());
-          list.pop_front();
-          list_has_data_.store(!list.empty());
-          return true;
-        }
-        return false;
-      };
-
     if (conditionMutex_ != nullptr) {
       std::unique_lock<std::mutex> clock(*conditionMutex_);
-      return pop_response(response);
+      return popResponse(response);
     }
-    return pop_response(response);
+    return popResponse(response);
   }
 
   void
@@ -164,12 +155,23 @@ public:
   }
 
 private:
+  bool popResponse(CustomClientResponse & response) RCPPUTILS_REQUIRES(internalMutex_)
+  {
+    if (!list_.empty()) {
+      response = std::move(list_.front());
+      list_.pop_front();
+      list_has_data_.store(!list_.empty());
+      return true;
+    }
+    return false;
+  }
+
   CustomClientInfo * info_;
   std::mutex internalMutex_;
-  std::list<CustomClientResponse> list;
+  std::list<CustomClientResponse> list_ RCPPUTILS_GUARDED_BY(internalMutex_);
   std::atomic_bool list_has_data_;
-  std::mutex * conditionMutex_;
-  std::condition_variable * conditionVariable_;
+  std::mutex * conditionMutex_ RCPPUTILS_GUARDED_BY(internalMutex_);
+  std::condition_variable * conditionVariable_ RCPPUTILS_GUARDED_BY(internalMutex_);
 };
 
 class ClientPubListener : public eprosima::fastrtps::PublisherListener

@@ -16,7 +16,6 @@
 #define RMW_FASTRTPS_SHARED_CPP__CUSTOM_PARTICIPANT_INFO_HPP_
 
 #include <map>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -163,15 +162,12 @@ public:
 
     auto fqdn = proxyData.topicName();
     bool trigger;
-    {
-      std::lock_guard<std::mutex> guard(topic_cache.getMutex());
-      if (is_alive) {
-        trigger = topic_cache.addTopic(proxyData.RTPSParticipantKey(),
-            proxyData.topicName(), proxyData.typeName());
-      } else {
-        trigger = topic_cache.removeTopic(proxyData.RTPSParticipantKey(),
-            proxyData.topicName(), proxyData.typeName());
-      }
+    if (is_alive) {
+      trigger = topic_cache.addTopic(proxyData.RTPSParticipantKey(),
+          proxyData.topicName(), proxyData.typeName());
+    } else {
+      trigger = topic_cache.removeTopic(proxyData.RTPSParticipantKey(),
+          proxyData.topicName(), proxyData.typeName());
     }
     if (trigger) {
       rmw_fastrtps_shared_cpp::__rmw_trigger_guard_condition(
@@ -182,8 +178,8 @@ public:
 
   std::map<eprosima::fastrtps::rtps::GUID_t, std::string> discovered_names;
   std::map<eprosima::fastrtps::rtps::GUID_t, std::string> discovered_namespaces;
-  LockedObject<TopicCache> reader_topic_cache;
-  LockedObject<TopicCache> writer_topic_cache;
+  TopicCache reader_topic_cache;
+  TopicCache writer_topic_cache;
   rmw_guard_condition_t * graph_guard_condition_;
 };
 

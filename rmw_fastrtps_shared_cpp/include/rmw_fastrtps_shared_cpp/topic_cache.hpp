@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <set>
 #include <sstream>
 #include <string>
@@ -29,18 +30,27 @@
 #include "fastrtps/rtps/common/Guid.h"
 #include "fastrtps/rtps/common/InstanceHandle.h"
 #include "rcutils/logging_macros.h"
+#include "rcpputils/thread_safety_annotations.h"
 
 typedef eprosima::fastrtps::rtps::GUID_t GUID_t;
+typedef std::unordered_map<std::string, std::vector<std::string>> NameToNamesMap;
 
 /**
  * Topic cache data structure. Manages relationships between participants and topics.
+ * As a data structure frequently accessed in a multithreaded context, all public interfaces
+ * of this class are guaranteed thread-safe.
  */
 class TopicCache
 {
 private:
-  typedef std::map<GUID_t,
-      std::unordered_map<std::string, std::vector<std::string>>> ParticipantTopicMap;
-  typedef std::unordered_map<std::string, std::vector<std::string>> TopicToTypes;
+  typedef std::map<GUID_t, NameToNamesMap> ParticipantTopicMap;
+  typedef NameToNamesMap TopicToTypes;
+
+  /**
+   * Guards TopicToTypes and ParticipantTopicMap - for atomic access to each
+   * individually, as well as to keep their topic sets in sync
+   */
+  mutable std::mutex mutex_;
 
   /**
    * Map of topic names to a vector of types that topic may use.
@@ -50,12 +60,12 @@ private:
    * multiple types on the same topic.
    *
    */
-  TopicToTypes topic_to_types_;
+  TopicToTypes topic_to_types_ RCPPUTILS_GUARDED_BY(mutex_);
 
   /**
    * Map of participant GUIDS to a set of topic-type.
    */
-  ParticipantTopicMap participant_to_topics_;
+  ParticipantTopicMap participant_to_topics_ RCPPUTILS_GUARDED_BY(mutex_);
 
   /**
    * Helper function to initialize a topic vector.
@@ -86,19 +96,28 @@ private:
 
 public:
   /**
-   * @return a map of topic name to the vector of topic types used.
+   * @param participant_guid
+   * @param topics On successful find, topic name map will be copied to this location
+   * @return whether guid was found in participant list
    */
-  const TopicToTypes & getTopicToTypes() const
+  bool cloneParticipantTopics(const GUID_t & participant_guid, NameToNamesMap * topics) const
   {
-    return topic_to_types_;
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = participant_to_topics_.find(participant_guid);
+    if (it == participant_to_topics_.end()) {
+      return false;
+    }
+    *topics = it->second;
+    return true;
   }
 
   /**
-   * @return a map of participant guid to the vector of topic names used.
+   * @return a copy of a map of topic name to the vector of topic types used.
    */
-  const ParticipantTopicMap & getParticipantToTopics() const
+  NameToNamesMap cloneTopicToTypes() const
   {
-    return participant_to_topics_;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return topic_to_types_;
   }
 
   /**
@@ -114,6 +133,7 @@ public:
     const std::string & topic_name,
     const std::string & type_name)
   {
+    std::lock_guard<std::mutex> lock(mutex_);
     initializeTopic(topic_name, topic_to_types_);
     auto guid = iHandle2GUID(rtpsParticipantKey);
     initializeParticipantMap(participant_to_topics_, guid);
@@ -146,6 +166,7 @@ public:
     const std::string & topic_name,
     const std::string & type_name)
   {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (topic_to_types_.find(topic_name) == topic_to_types_.end()) {
       RCUTILS_LOG_DEBUG_NAMED(
         "rmw_fastrtps_shared_cpp",
@@ -182,15 +203,33 @@ public:
     }
     return true;
   }
+
+  size_t countParticipants(const std::vector<std::string> & fqdns)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    size_t count = 0;
+    // Search and sum up the participant counts
+    for (const auto & topic_fqdn : fqdns) {
+      const auto & it = topic_to_types_.find(topic_fqdn);
+      if (it != topic_to_types_.end()) {
+        count += it->second.size();
+      }
+    }
+    return count;
+  }
+
+
+  friend std::ostream & operator<<(std::ostream & os, const TopicCache & topic_cache);
 };
 
 inline std::ostream & operator<<(
   std::ostream & ostream,
   const TopicCache & topic_cache)
 {
+  std::lock_guard<std::mutex> lock(topic_cache.mutex_);
   std::stringstream map_ss;
   map_ss << "Participant Info: " << std::endl;
-  for (auto & elem : topic_cache.getParticipantToTopics()) {
+  for (auto & elem : topic_cache.participant_to_topics_) {
     std::ostringstream stream;
     stream << "  Topics: " << std::endl;
     for (auto & types : elem.second) {
@@ -203,7 +242,7 @@ inline std::ostream & operator<<(
   }
   std::stringstream topics_ss;
   topics_ss << "Cumulative TopicToTypes: " << std::endl;
-  for (auto & elem : topic_cache.getTopicToTypes()) {
+  for (auto & elem : topic_cache.topic_to_types_) {
     std::ostringstream stream;
     std::copy(elem.second.begin(), elem.second.end(), std::ostream_iterator<std::string>(stream,
       ","));
@@ -212,21 +251,5 @@ inline std::ostream & operator<<(
   ostream << map_ss.str() << topics_ss.str();
   return ostream;
 }
-
-template<class T>
-class LockedObject : public T
-{
-private:
-  mutable std::mutex cache_mutex_;
-
-public:
-  /**
-  * @return a reference to this object to lock.
-  */
-  std::mutex & getMutex() const
-  {
-    return cache_mutex_;
-  }
-};
 
 #endif  // RMW_FASTRTPS_SHARED_CPP__TOPIC_CACHE_HPP_
